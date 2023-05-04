@@ -10,8 +10,7 @@ import cashaddr
 from minipgp import *
 
 from sigstuff import verifies, compress, sigenc
-from bitcoin import minpush, sha256, rip160
-import bitcoin
+from bitcoin import sha256
 
 with open('pubkey.gpg', 'rb') as f:
     tagpaks = read_packets(f.read())
@@ -24,8 +23,17 @@ assert(len(cpubkey) == 33)
 
 vk = ecdsa.VerifyingKey.from_string(pubkey[1:], curve=ecdsa.SECP256k1, validate_point=True)
 print("pubkey.gpg loaded, key ID", pubpak.key_id().hex().upper())
+print()
 
+# Extract the x and y coordinates of the public key point
+x = vk.pubkey.point.x()
+y = vk.pubkey.point.y()
 
+# Print the coordinates
+print("Public key point coordinates:")
+print("x =", x)
+print("y =", y)
+print()
 
 with open('testmsg', 'rb') as f:
     msg = f.read()
@@ -45,45 +53,14 @@ hash2 = digest[:2]
 
 assert hash2 == spme.hash2
 
-print("Message:   ", repr(msg))
-print("Signature validity on message:   ", verifies(vk, digest, spme.mpis))
+print("Message:", repr(msg))
+print("Message hex:", preimage.hex())
 print()
 
-# Construct basic redeem script.
-OP_CHECKDATASIG = b'\xba'
-redeemscript = (  minpush(preimage)
-                + minpush(cpubkey)
-                + OP_CHECKDATASIG)
-# Redeem script hash (for address)
-rshash = rip160(sha256(redeemscript))
+r, s = spme.mpis
+print("Sig:")
+print("r:", r)
+print("s:", s)
+print()
 
-# Convert signature to bitcoin form.
-bcsig = sigenc(spme.mpis[0], spme.mpis[1])
-# Calculate ScriptSig
-scriptsig = minpush(bcsig) + minpush(redeemscript)
-
-print("Preimage (%d bytes): %s"%(len(preimage), preimage.hex()))
-print("Compressed pubkey (33 bytes): %s"%(cpubkey.hex(),))
-print("Redeemscript (%d bytes): %s"%(len(redeemscript), redeemscript.hex()))
-print("            hash: %s"%(rshash.hex(), ))
-print("    ", cashaddr.encode_full('bitcoincash', cashaddr.SCRIPT_TYPE, rshash))
-print("        ", cashaddr.encode_full('bchtest', cashaddr.SCRIPT_TYPE, rshash))
-print("ScriptSig (%d bytes): %s"%(len(scriptsig), scriptsig.hex()))
-
-
-# Make transaction
-# funding info
-inp = dict(prevout_hash  = bytes.fromhex('898e8031163df578acb91931c2da2d0c9ebed6d00b173fd2c1e2556cd5698b11'),
-           prevout_n     = 1,
-           prevout_value = 30000000,
-           scriptsig     = scriptsig,
-           sequence      = 0xffffffff,
-           )
-out = dict(value = 30000000-1000,
-           scriptpubkey = b''.join((b'\x76\xa9\x14',
-                                    cashaddr.decode('bchtest:qq4j8hh0qac4dy8fe9xyhmtvu9spu9w58unf74hkkd')[2],
-                                    b'\x88\xac'))
-           )
-tx = bitcoin.SimpleTx(1,[inp],[out],0)
-print("Transaction:", tx.to_bytes().hex())
-
+print("Signature validity on message:", verifies(vk, digest, spme.mpis))
